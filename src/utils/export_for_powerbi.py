@@ -19,7 +19,6 @@ def export_data_for_powerbi():
 
     # 2. Exportar features y adjuntar predicciones del modelo
     df_features = conn.execute("SELECT * FROM marts.fact_features ORDER BY match_date ASC;").df()
-    conn.close()
 
     model_path = os.path.join(base_dir, 'data', 'models', 'best_model.joblib')
     if os.path.exists(model_path):
@@ -47,6 +46,23 @@ def export_data_for_powerbi():
 
     df_features.to_csv(os.path.join(export_dir, 'fact_predictions.csv'), index=False)
     print("✅ Exportado: data/powerbi/fact_predictions.csv")
+
+    # 3. Exportar dimensión de equipos con escudos (dim_teams)
+    df_teams = conn.execute("""
+        SELECT DISTINCT home_team_id AS team_id, home_team_name AS team_name FROM raw.matches_api
+        UNION
+        SELECT DISTINCT away_team_id AS team_id, away_team_name AS team_name FROM raw.matches_api
+        ORDER BY team_name;
+    """).df()
+    
+    conn.close()
+
+    df_teams['crest_url'] = df_teams['team_id'].apply(
+        lambda tid: f"https://crests.football-data.org/{tid}.png"
+    )
+
+    df_teams.to_csv(os.path.join(export_dir, 'dim_teams.csv'), index=False)
+    print("✅ Exportado: data/powerbi/dim_teams.csv")
 
 if __name__ == '__main__':
     export_data_for_powerbi()
