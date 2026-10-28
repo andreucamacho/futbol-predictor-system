@@ -48,44 +48,19 @@ def load_json_matches_to_raw(conn: duckdb.DuckDBPyConnection) -> None:
     # Convertimos los datos a un DataFrame de pandas
     df_matches = pd.DataFrame(records)
 
-    # 1. Crear tabla en DuckDB si no existe
+    # Recrear la tabla con los datos más recientes de todos los JSONs procesados
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS raw.matches_api (
-            match_id BIGINT,
-            utc_date VARCHAR,
-            status VARCHAR,
-            matchday INT,
-            stage VARCHAR,
-            home_team_id BIGINT,
-            home_team_name VARCHAR,
-            away_team_id BIGINT,
-            away_team_name VARCHAR,
-            score_winner VARCHAR,
-            score_fulltime_home INT,
-            score_fulltime_away INT,
-            season_id BIGINT,
-            season_start_date VARCHAR,
-            season_end_date VARCHAR,
-            ingested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-
-    # 2. Carga idempotente: Insertar solo los partidos que no existen aún en DuckDB
-    conn.execute("""
-        INSERT INTO raw.matches_api (
-            match_id, utc_date, status, matchday, stage, 
-            home_team_id, home_team_name, away_team_id, away_team_name, 
-            score_winner, score_fulltime_home, score_fulltime_away, 
-            season_id, season_start_date, season_end_date
-        )
+        CREATE OR REPLACE TABLE raw.matches_api AS 
         SELECT 
             match_id, utc_date, status, matchday, stage, 
             home_team_id, home_team_name, away_team_id, away_team_name, 
             score_winner, score_fulltime_home, score_fulltime_away, 
-            season_id, season_start_date, season_end_date
-        FROM df_matches
-        WHERE match_id NOT IN (SELECT match_id FROM raw.matches_api);
+            season_id, season_start_date, season_end_date,
+            CURRENT_TIMESTAMP AS ingested_at
+        FROM df_matches;
     """)
+    
+    conn.execute("DROP TABLE IF EXISTS temp_matches;")
 
     count = conn.execute("SELECT COUNT(*) FROM raw.matches_api;").fetchone()[0]
     print(f"✅ Carga completada. Total de registros en raw.matches_api: {count}")
