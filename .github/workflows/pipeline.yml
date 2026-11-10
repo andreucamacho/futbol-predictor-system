@@ -2,7 +2,7 @@ name: Football Predictor Pipeline
 
 on:
   schedule:
-    # Se ejecuta automáticamente todos los lunes a las 06:00 AM UTC
+    # Se ejecuta automáticamente todos los días a las 06:00 AM UTC
     - cron: '0 6 * * 1'
   workflow_dispatch: # Permite ejecutar el pipeline manualmente desde GitHub con un botón
 
@@ -20,10 +20,10 @@ jobs:
           python-version: '3.10'
           cache: 'pip'
 
-      - name: 3. Instalar librerías del sistema (C++ / OpenMP para LightGBM)
+      - name: 3. Instalar dependencias
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libomp-dev
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: 4. Instalar dependencias
         run: |
