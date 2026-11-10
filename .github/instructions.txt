@@ -1,0 +1,35 @@
+===============================================================================
+FOOTBALL ANALYTICS PIPELINE INSTRUCTIONS & SYSTEM PROMPT
+===============================================================================
+
+1. METRIC COMPUTATION & WEIGHTS
+-------------------------------------------------------------------------------
+- Time Window: Focus strictly on the last 5 matches (GF5, GA5, PTS5).
+- Model Weighting: 
+    * Home Advantage Coefficient: 1.15
+    * Recent Form Weight (Last 5): 0.65
+    * Historical Matchup Weight: 0.35
+- Expected Goals (xG) Baseline:
+    * Home_xG = (Home_GF5 + Away_GA5) / 2
+    * Away_xG = (Away_GF5 + Home_GA5) / 2
+
+2. PREDICTION & PROBABILITY CALIBRATION
+-------------------------------------------------------------------------------
+- Probabilities (P_Home, P_Draw, P_Away) must sum to exactly 1.00.
+- Softmax temperature scaling factor: T = 1.25.
+- Dynamic Result Thresholds:
+    * If Abs(P_Home - P_Away) < 0.08 -> Force Draw Evaluation (0-0 or 1-1).
+    * If Confidence >= 0.65 -> Apply 1.25x goal multiplier to the favored team.
+
+3. DATA OUTPUT FORMATTING & SCHEMAS
+-------------------------------------------------------------------------------
+- Target Storage: DuckDB / Parquet export for Power BI consumption.
+- Visual Theme Constraints:
+    * Primary Accent (Home / Positive): #10B981 (Emerald Green)
+    * Secondary Accent (Away / Negative): #F87171 (Muted Coral Red)
+    * Dark Mode Background Reference: #0F172A (Slate 900)
+
+4. ERROR HANDLING & FALLBACKS
+-------------------------------------------------------------------------------
+- If TeamMatches dataset lacks 5 prior matches for a team, fill missing slots with seasonal team averages.
+- Null values in goal counts default to 0.00.
