@@ -1,0 +1,13 @@
+# Claves y secretos
+.env
+
+# Entornos virtuales
+.venv/
+.venv_test/
+
+# Archivos temporales de Python
+__pycache__/
+*.pyc
+
+# Configuración local de VS Code
+.vscode/

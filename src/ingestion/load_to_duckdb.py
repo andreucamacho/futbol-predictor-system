@@ -9,22 +9,35 @@ raw_data_dir = os.path.join(os.path.dirname(__file__), '../../data/raw')
 
 def load_json_matches_to_raw(conn: duckdb.DuckDBPyConnection) -> None:
     json_pattern = os.path.join(raw_data_dir, 'matches_PD_*.json')
-    json_files = glob.glob(json_pattern)
+    json_files = sorted(glob.glob(json_pattern))
 
     if not json_files:
         print("⚠️ No se encontraron archivos JSON de partidos en data/raw/")
         return
     print(f"📁 Se encontraron {len(json_files)} archivo(s) JSON para procesar.")
 
-    records = []
+    records_by_id = {}
+    total_leidos = 0
+
     for file_path in json_files:
         print(f"🔄 Leyendo {os.path.basename(file_path)}...")
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-            
+
         for m in data.get('matches', []):
-            records.append({
-                'match_id': m.get('id'),
+            match_id = m.get('id')
+            if match_id is None:
+                continue
+            total_leidos += 1
+            last_updated = m.get('lastUpdated') or ''
+
+            previo = records_by_id.get(match_id)
+            # Si ya hay una versión más reciente de este partido, se mantiene
+            if previo is not None and last_updated < previo['last_updated']:
+                continue
+
+            records_by_id[match_id] = {
+                'match_id': match_id,
                 'utc_date': m.get('utcDate'),
                 'status': m.get('status'),
                 'matchday': m.get('matchday'),
@@ -38,29 +51,31 @@ def load_json_matches_to_raw(conn: duckdb.DuckDBPyConnection) -> None:
                 'score_fulltime_away': m.get('score', {}).get('fullTime', {}).get('away'),
                 'season_id': m.get('season', {}).get('id'),
                 'season_start_date': m.get('season', {}).get('startDate'),
-                'season_end_date': m.get('season', {}).get('endDate')
-            })
+                'season_end_date': m.get('season', {}).get('endDate'),
+                'last_updated': last_updated,
+            }
 
+    records = list(records_by_id.values())
     if not records:
         print("⚠️ No se extrajeron registros de los JSON.")
         return
 
-    # Convertimos los datos a un DataFrame de pandas
+    print(f"ℹ️ {total_leidos} filas leídas, {len(records)} partidos únicos "
+          f"({total_leidos - len(records)} duplicados descartados).")
+
     df_matches = pd.DataFrame(records)
 
-    # Recrear la tabla con los datos más recientes de todos los JSONs procesados
     conn.execute("""
-        CREATE OR REPLACE TABLE raw.matches_api AS 
-        SELECT 
-            match_id, utc_date, status, matchday, stage, 
-            home_team_id, home_team_name, away_team_id, away_team_name, 
-            score_winner, score_fulltime_home, score_fulltime_away, 
+        CREATE OR REPLACE TABLE raw.matches_api AS
+        SELECT
+            match_id, utc_date, status, matchday, stage,
+            home_team_id, home_team_name, away_team_id, away_team_name,
+            score_winner, score_fulltime_home, score_fulltime_away,
             season_id, season_start_date, season_end_date,
+            last_updated,
             CURRENT_TIMESTAMP AS ingested_at
         FROM df_matches;
     """)
-    
-    conn.execute("DROP TABLE IF EXISTS temp_matches;")
 
     count = conn.execute("SELECT COUNT(*) FROM raw.matches_api;").fetchone()[0]
     print(f"✅ Carga completada. Total de registros en raw.matches_api: {count}")

@@ -1,37 +1,64 @@
 import sys
 import os
+import argparse
+import subprocess
+import time
 
+from src.ingestion.extract_api import obtener_y_guardar_partidos
 from src.utils.db import get_db_connection, init_schemas
 from src.ingestion.load_to_duckdb import run_ingestion
 from src.features.transform_data import run_transformations
 from src.features.build_features import run_feature_engineering
 from src.models.evaluate_models import run_model_benchmark
 from src.models.predict import predict_upcoming_matches
+from src.utils.export_for_powerbi import export_data_for_powerbi
 
-def run_full_pipeline():
+def ejecutar(nombre, funcion):
+    print(f"--- {nombre} ---")
+    inicio = time.time()
+    funcion()
+    print(f"⏱️ {time.time() - inicio:.1f} s\n")
+
+
+def subir_a_github():
+    print("--- SUBIDA A GITHUB ---")
+    subprocess.run(["git", "add", "-f", "data/powerbi"], check=True)
+    # check=False: si no hay cambios, commit devuelve error y no es grave
+    subprocess.run(["git", "commit", "-m", "actualiza datos y predicciones"], check=False)
+    subprocess.run(["git", "push"], check=True)
+    print("✅ Datos subidos\n")
+
+def run_full_pipeline(skip_extract=False, train=False, push=False):
     print("🚀 INICIANDO PIPELINE END-TO-END DE PREDICCIÓN DE FÚTBOL 🚀\n")
-    
-    print("--- [1/5] FASE 2: INGESTA DE DATOS A DUCKDB ---")
-    run_ingestion()
-    print("\n")
 
-    print("--- [2/5] FASE 3A: LIMPIEZA Y STAGING ---")
-    run_transformations()
-    print("\n")
+    if not skip_extract:
+        ejecutar("[1] EXTRACCIÓN DESDE LA API", obtener_y_guardar_partidos)
+    ejecutar("[2] INGESTA A DUCKDB", run_ingestion)
+    ejecutar("[3] LIMPIEZA Y STAGING", run_transformations)
+    ejecutar("[4] FEATURE ENGINEERING", run_feature_engineering)
 
-    print("--- [3/5] FASE 3B: FEATURE ENGINEERING ---")
-    run_feature_engineering()
-    print("\n")
+    if train:
+        ejecutar("[5] ENTRENAMIENTO Y BENCHMARK", run_model_benchmark)
+    else:
+        print("--- [5] ENTRENAMIENTO omitido (usa --train para reentrenar) ---\n")
 
-    print("--- [4/5] FASE 4/5: ENTRENAMIENTO Y BENCHMARK DE MODELOS ---")
-    run_model_benchmark()
-    print("\n")
+    ejecutar("[6] PREDICCIONES", predict_upcoming_matches)
+    ejecutar("[7] EXPORTACIÓN PARA POWER BI", export_data_for_powerbi)
 
-    print("--- [5/5] GENERACIÓN DE PREDICCIONES ---")
-    predict_upcoming_matches()
-    print("\n")
+    if push:
+        subir_a_github()
 
-    print("🎉 PIPELINE EJECUTADO CON ÉXITO AL 100% 🎉")
+    print("🎉 PIPELINE EJECUTADO CON ÉXITO 🎉")
+
 
 if __name__ == '__main__':
-    run_full_pipeline()
+    parser = argparse.ArgumentParser(description="Pipeline de predicción de fútbol")
+    parser.add_argument("--skip-extract", action="store_true",
+                        help="No descargar de la API (usa los JSON ya guardados)")
+    parser.add_argument("--train", action="store_true",
+                        help="Reentrenar y comparar modelos")
+    parser.add_argument("--push", action="store_true",
+                        help="Subir data/powerbi a GitHub al terminar")
+    args = parser.parse_args()
+
+    run_full_pipeline(args.skip_extract, args.train, args.push)
